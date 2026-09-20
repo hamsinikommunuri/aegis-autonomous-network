@@ -4,14 +4,18 @@ Controlled, reproducible injection of faults: link cuts, router crashes, optical
 latency spikes, bandwidth chokes, and traffic surges.
 """
 from typing import Dict, List, Optional, Any
+import random
 from ...core.simulation.engine import SimulationEngine
 from ...core.network.link import LinkStatus
 from ...core.network.node import NodeStatus
+from ...core.packets.packet import Packet
 
 
 class FailureInjector:
-    def __init__(self, simulation: SimulationEngine):
+    def __init__(self, simulation: SimulationEngine, seed: int = 42):
         self.sim = simulation
+        self.seed = seed
+        self.rng = random.Random(seed)
         self.original_link_configs: Dict[str, Dict[str, Any]] = {}
         self.original_node_configs: Dict[str, Dict[str, Any]] = {}
         self.original_flow_demands: Dict[str, float] = {}
@@ -23,6 +27,7 @@ class FailureInjector:
                 "bandwidth_bps": link.bandwidth_bps,
                 "propagation_delay_ms": link.propagation_delay_ms,
                 "loss_rate": link.loss_rate,
+                "error_rate": link.error_rate,
             }
 
         for nid, node in simulation.topology.nodes.items():
@@ -77,11 +82,39 @@ class FailureInjector:
             return True
         return False
 
-    def inject_traffic_surge(self, flow_id: str, multiplier: float = 4.0) -> bool:
-        """Simulates sudden application traffic burst / flash crowd."""
-        flow = self.sim.flows.get(flow_id)
-        if flow:
-            flow.demand_bps *= multiplier
+    def inject_queue_saturation(self, link_id: str, depth_packets: int = 240) -> bool:
+        """Forces queue buffer saturation on a link to trigger tail drop."""
+        buf = self.sim.link_buffers.get(link_id)
+        link = self.sim.topology.get_link(link_id)
+        if buf and link:
+            # Preload buffer with dummy saturated packets
+            for i in range(min(depth_packets, buf.capacity_packets - buf.total_packets)):
+                dummy = Packet(
+                    id=f"sat-pkt-{link_id}-{i}",
+                    flow_id="saturation-probe",
+                    source_id=link.source,
+                    dest_id=link.destination,
+                    size_bytes=1400,
+                    creation_time_ms=self.sim.current_time_ms,
+                )
+                buf.enqueue(dummy)
+            link.current_queue_depth = buf.total_packets
+            link.current_queue_bytes = buf.total_bytes
+            return True
+        return False
+
+    def inject_packet_corruption(self, link_id: str, error_rate: float = 0.08) -> bool:
+        """Simulates transmission bit error rate (BER) leading to frame checksum / CRC corruption."""
+        link = self.sim.topology.get_link(link_id)
+        if link:
+            link.error_rate = error_rate
+            link.loss_rate = max(link.loss_rate, error_rate)
+            link.status = LinkStatus.DEGRADED
+            rev = self.sim.topology.get_link_between(link.destination, link.source)
+            if rev:
+                rev.error_rate = error_rate
+                rev.loss_rate = max(rev.loss_rate, error_rate)
+                rev.status = LinkStatus.DEGRADED
             return True
         return False
 
@@ -94,6 +127,7 @@ class FailureInjector:
                 link.bandwidth_bps = cfg["bandwidth_bps"]
                 link.propagation_delay_ms = cfg["propagation_delay_ms"]
                 link.loss_rate = cfg["loss_rate"]
+                link.error_rate = cfg.get("error_rate", 0.0)
 
         for nid, cfg in self.original_node_configs.items():
             node = self.sim.topology.get_node(nid)

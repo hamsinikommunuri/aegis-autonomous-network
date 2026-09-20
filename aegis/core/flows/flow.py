@@ -24,6 +24,11 @@ class TrafficFlow:
     active: bool = True
     current_path: List[str] = field(default_factory=list)
 
+    # Sequence & Retransmission state
+    next_seq_num: int = 0
+    retransmissions: int = 0
+    retransmission_queue: List[Any] = field(default_factory=list)
+
     # Runtime metrics
     packets_sent: int = 0
     packets_received: int = 0
@@ -52,6 +57,11 @@ class TrafficFlow:
             return 0.0
         return (self.packets_dropped / total) * 100.0
 
+    def get_next_sequence_number(self) -> int:
+        seq = self.next_seq_num
+        self.next_seq_num += 1
+        return seq
+
     def record_packet_arrival(self, latency_ms: float) -> None:
         self.packets_received += 1
         self.bytes_received += self.packet_size_bytes
@@ -70,8 +80,10 @@ class TrafficFlow:
         # Check SLA compliance
         self.sla_violated = (self.average_latency_ms > self.latency_sla_ms) or (self.loss_rate_percent > self.loss_sla_percent)
 
-    def record_packet_drop(self) -> None:
+    def record_packet_drop(self, packet: Optional[Any] = None) -> None:
         self.packets_dropped += 1
+        if packet and self.protocol == Protocol.TCP:
+            self.retransmission_queue.append(packet)
         self.sla_violated = (self.loss_rate_percent > self.loss_sla_percent) or (self.average_latency_ms > self.latency_sla_ms)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -93,6 +105,7 @@ class TrafficFlow:
             "packets_sent": self.packets_sent,
             "packets_received": self.packets_received,
             "packets_dropped": self.packets_dropped,
+            "retransmissions": self.retransmissions,
             "loss_rate_percent": round(self.loss_rate_percent, 2),
             "average_latency_ms": round(self.average_latency_ms, 2),
             "jitter_ms": round(self.jitter_ms, 2),

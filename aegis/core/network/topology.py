@@ -121,13 +121,28 @@ class Topology:
                             edge.status = LinkStatus.DOWN
                             disabled_links.append(edge)
 
+                # Temporarily disable root path nodes (except spur_node) to prevent cycles
+                disabled_nodes: List[Node] = []
+                for rn in root_path[:-1]:
+                    r_node = self.get_node(rn)
+                    if r_node and r_node.is_operational():
+                        r_node.status = NodeStatus.DOWN
+                        disabled_nodes.append(r_node)
+
                 spur_path = router.compute_path(self, spur_node, destination)
                 if spur_path:
                     total_path = root_path[:-1] + spur_path
                     if total_path not in [p for _, p in B] and total_path not in A:
-                        # Path cost calculation
-                        cost = float(len(total_path))
+                        # True path cost calculation summing link costs
+                        cost = 0.0
+                        for step_idx in range(len(total_path) - 1):
+                            l_step = self.get_link_between(total_path[step_idx], total_path[step_idx + 1])
+                            cost += l_step.base_cost if l_step else 1.0
                         B.append((cost, total_path))
+
+                # Restore disabled nodes
+                for r_node in disabled_nodes:
+                    r_node.status = NodeStatus.UP
 
                 # Restore disabled links
                 for edge in disabled_links:

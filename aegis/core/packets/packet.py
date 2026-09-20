@@ -13,6 +13,10 @@ class TrafficClass(str, Enum):
     NORMAL = "NORMAL"        # Priority 50  - HTTP/HTTPS, Web Apps
     BULK = "BULK"            # Priority 10  - Backups, Large File Transfers
 
+    @property
+    def priority_value(self) -> int:
+        return TRAFFIC_CLASS_PRIORITIES.get(self, 50)
+
 
 TRAFFIC_CLASS_PRIORITIES = {
     TrafficClass.CRITICAL: 100,
@@ -41,6 +45,8 @@ class Packet:
     creation_time_ms: float = 0.0
     departure_time_ms: Optional[float] = None
     arrival_time_ms: Optional[float] = None
+    sequence_number: int = 0
+    retransmission: bool = False
     ttl: int = 64
     hop_path: List[str] = field(default_factory=list)
     current_node: Optional[str] = None
@@ -57,12 +63,21 @@ class Packet:
             return max(0.0, self.arrival_time_ms - self.creation_time_ms)
         return None
 
+    def __lt__(self, other: Any) -> bool:
+        if isinstance(other, Packet):
+            if self.creation_time_ms != other.creation_time_ms:
+                return self.creation_time_ms < other.creation_time_ms
+            return self.sequence_number < other.sequence_number
+        return False
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
             "flow_id": self.flow_id,
             "source_id": self.source_id,
             "dest_id": self.dest_id,
+            "sequence_number": self.sequence_number,
+            "retransmission": self.retransmission,
             "protocol": self.protocol.value,
             "traffic_class": self.traffic_class.value,
             "priority": self.priority,

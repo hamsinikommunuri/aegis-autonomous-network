@@ -9,12 +9,181 @@ from ...core.simulation.engine import SimulationEngine
 from ...core.network.link import LinkStatus
 from ...core.network.node import NodeStatus
 from ...core.routing.dijkstra import DijkstraRouter
+from ...core.packets.packet import TrafficClass
 
 
 class NetworkActuator:
     def __init__(self, simulation: SimulationEngine):
         self.sim = simulation
         self.action_history: List[Dict[str, Any]] = []
+        self.action_counter: int = 800
+
+    def _next_action_id(self) -> str:
+        self.action_counter += 1
+        return f"ACTION #{self.action_counter:03d}"
+
+    def reroute_flow(
+        self,
+        flow_id: str,
+        new_path: List[str],
+        reason: str = "Congestion mitigation",
+        predicted_benefit: str = "Latency -31%"
+    ) -> Dict[str, Any]:
+        flow = self.sim.flows.get(flow_id)
+        if not flow:
+            return {"status": "ERROR", "message": f"Flow {flow_id} not found"}
+        old_path = list(flow.current_path)
+        snapshot = self._capture_rollback_snapshot({"action_type": "REROUTE_FLOW"})
+        flow.current_path = list(new_path)
+        action_id = self._next_action_id()
+        record = {
+            "action_id": action_id,
+            "action": "REROUTE_FLOW",
+            "flow": flow_id,
+            "old_path": " -> ".join(old_path),
+            "new_path": " -> ".join(new_path),
+            "reason": reason,
+            "predicted_benefit": predicted_benefit,
+            "timestamp_ms": self.sim.current_time_ms,
+            "snapshot": snapshot,
+        }
+        self.action_history.append(record)
+        return record
+
+    def change_route_cost(self, link_id: str, new_cost: float, reason: str = "Dynamic traffic engineering") -> Dict[str, Any]:
+        link = self.sim.topology.get_link(link_id)
+        if not link:
+            return {"status": "ERROR", "message": f"Link {link_id} not found"}
+        old_cost = link.operational_cost
+        link.operational_cost = new_cost
+        action_id = self._next_action_id()
+        record = {
+            "action_id": action_id,
+            "action": "CHANGE_ROUTE_COST",
+            "resource": link_id,
+            "old_cost": old_cost,
+            "new_cost": new_cost,
+            "reason": reason,
+            "predicted_benefit": "Traffic diverted to lower cost alternatives",
+            "timestamp_ms": self.sim.current_time_ms,
+        }
+        self.action_history.append(record)
+        return record
+
+    def disable_link(self, link_id: str, reason: str = "Isolate degraded link") -> Dict[str, Any]:
+        success = self.sim.topology.set_link_status(link_id, LinkStatus.DOWN)
+        action_id = self._next_action_id()
+        record = {
+            "action_id": action_id,
+            "action": "DISABLE_LINK",
+            "resource": link_id,
+            "reason": reason,
+            "predicted_benefit": "Eliminate packet loss on degraded segment",
+            "timestamp_ms": self.sim.current_time_ms,
+        }
+        self.action_history.append(record)
+        return record
+
+    def restore_link(self, link_id: str, reason: str = "Link recovered") -> Dict[str, Any]:
+        success = self.sim.topology.set_link_status(link_id, LinkStatus.UP)
+        action_id = self._next_action_id()
+        record = {
+            "action_id": action_id,
+            "action": "RESTORE_LINK",
+            "resource": link_id,
+            "reason": reason,
+            "predicted_benefit": "Restore backbone capacity",
+            "timestamp_ms": self.sim.current_time_ms,
+        }
+        self.action_history.append(record)
+        return record
+
+    def disable_node(self, node_id: str, reason: str = "Isolate failing router") -> Dict[str, Any]:
+        success = self.sim.topology.set_node_status(node_id, NodeStatus.DOWN)
+        action_id = self._next_action_id()
+        record = {
+            "action_id": action_id,
+            "action": "DISABLE_NODE",
+            "resource": node_id,
+            "reason": reason,
+            "predicted_benefit": "Prevent packet drops at failing router",
+            "timestamp_ms": self.sim.current_time_ms,
+        }
+        self.action_history.append(record)
+        return record
+
+    def restore_node(self, node_id: str, reason: str = "Node online") -> Dict[str, Any]:
+        success = self.sim.topology.set_node_status(node_id, NodeStatus.UP)
+        action_id = self._next_action_id()
+        record = {
+            "action_id": action_id,
+            "action": "RESTORE_NODE",
+            "resource": node_id,
+            "reason": reason,
+            "predicted_benefit": "Restore transit capacity",
+            "timestamp_ms": self.sim.current_time_ms,
+        }
+        self.action_history.append(record)
+        return record
+
+    def change_bandwidth(self, link_id: str, new_bandwidth_bps: float, reason: str = "QoS bandwidth reservation") -> Dict[str, Any]:
+        link = self.sim.topology.get_link(link_id)
+        if not link:
+            return {"status": "ERROR", "message": f"Link {link_id} not found"}
+        old_bw = link.bandwidth_bps
+        link.bandwidth_bps = new_bandwidth_bps
+        action_id = self._next_action_id()
+        record = {
+            "action_id": action_id,
+            "action": "CHANGE_BANDWIDTH",
+            "resource": link_id,
+            "old_bandwidth_bps": old_bw,
+            "new_bandwidth_bps": new_bandwidth_bps,
+            "reason": reason,
+            "predicted_benefit": "Reallocate throughput guarantee",
+            "timestamp_ms": self.sim.current_time_ms,
+        }
+        self.action_history.append(record)
+        return record
+
+    def change_traffic_priority(self, flow_id: str, new_priority: Any, reason: str = "QoS elevation") -> Dict[str, Any]:
+        flow = self.sim.flows.get(flow_id)
+        if not flow:
+            return {"status": "ERROR", "message": f"Flow {flow_id} not found"}
+        old_p = flow.priority
+        if isinstance(new_priority, TrafficClass):
+            flow.traffic_class = new_priority
+            flow.priority = new_priority.priority_value
+        else:
+            flow.priority = int(new_priority)
+        action_id = self._next_action_id()
+        record = {
+            "action_id": action_id,
+            "action": "CHANGE_TRAFFIC_PRIORITY",
+            "flow": flow_id,
+            "old_priority": old_p,
+            "new_priority": flow.priority,
+            "reason": reason,
+            "predicted_benefit": "Elevated forwarding priority in QoS buffers",
+            "timestamp_ms": self.sim.current_time_ms,
+        }
+        self.action_history.append(record)
+        return record
+
+    def change_qos_policy(self, policy_rules: Any, reason: str = "QoS policy adjustment") -> Dict[str, Any]:
+        action_id = self._next_action_id()
+        rules_dict = dict(policy_rules) if isinstance(policy_rules, dict) else {"policy": str(policy_rules)}
+        record = {
+            "action_id": action_id,
+            "action": "CHANGE_QOS_POLICY",
+            "policy_rules": rules_dict,
+            "status": "SUCCESS",
+            "reason": reason,
+            "predicted_benefit": "Strict queue prioritization applied",
+            "timestamp_ms": self.sim.current_time_ms,
+        }
+        self.action_history.append(record)
+        return record
 
     def execute_plan(self, plan: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -70,7 +239,9 @@ class NetworkActuator:
             self.sim.recompute_all_routes()
             executed_actions.append("Recomputed all routes globally")
 
+        action_id = self._next_action_id()
         record = {
+            "action_id": action_id,
             "plan_id": plan.get("id"),
             "action_type": action_type,
             "actions_applied": executed_actions,

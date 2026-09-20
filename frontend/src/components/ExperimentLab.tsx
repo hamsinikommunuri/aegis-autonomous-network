@@ -19,6 +19,8 @@ interface ExperimentLabProps {
   onInjectLatencySpike: (linkId: string, extraMs: number) => void;
   onInjectBandwidthReduction: (linkId: string, newBwBps: number) => void;
   onInjectTrafficSurge: (flowId: string, multiplier: number) => void;
+  onInjectQueueSaturation?: (linkId: string, queueCapacity: number) => void;
+  onInjectPacketCorruption?: (linkId: string, corruptionRate: number) => void;
   onRunScenario: (scenarioId: string) => void;
   onResetFailures: () => void;
   linkIds: string[];
@@ -33,6 +35,8 @@ export const ExperimentLab: React.FC<ExperimentLabProps> = ({
   onInjectLatencySpike,
   onInjectBandwidthReduction,
   onInjectTrafficSurge,
+  onInjectQueueSaturation,
+  onInjectPacketCorruption,
   onRunScenario,
   onResetFailures,
   linkIds,
@@ -46,6 +50,8 @@ export const ExperimentLab: React.FC<ExperimentLabProps> = ({
   const [latencySpike, setLatencySpike] = useState(80);
   const [chokeBwMbps, setChokeBwMbps] = useState(25);
   const [surgeMult, setSurgeMult] = useState(4);
+  const [queueCapacity, setQueueCapacity] = useState(5);
+  const [corruptionRate, setCorruptionRate] = useState(20);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const notify = (msg: string) => {
@@ -326,6 +332,62 @@ export const ExperimentLab: React.FC<ExperimentLabProps> = ({
               style={{ width: '100%', padding: '6px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
             >
               Inject Traffic Surge
+            </button>
+          </div>
+
+          {/* Queue Saturation */}
+          <div style={{ background: '#090d14', border: '1px solid #1a2333', borderRadius: '6px', padding: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '12px', fontWeight: 700, color: '#ec4899' }}>5. Queue Saturation</span>
+              <span style={{ fontSize: '11px', color: '#ec4899', fontFamily: 'monospace' }}>{queueCapacity} pkts</span>
+            </div>
+            <p style={{ fontSize: '11px', color: '#64748b', margin: '4px 0 8px 0' }}>Simulate buffer bloat & tail-drop</p>
+            <input
+              type="range"
+              min="1"
+              max="20"
+              value={queueCapacity}
+              onChange={(e) => setQueueCapacity(Number(e.target.value))}
+              style={{ width: '100%', marginBottom: '8px', accentColor: '#ec4899' }}
+            />
+            <button
+              onClick={() => {
+                if (onInjectQueueSaturation) {
+                  onInjectQueueSaturation(selectedLink, queueCapacity);
+                  notify(`Saturated queue on ${selectedLink} to ${queueCapacity} pkts`);
+                }
+              }}
+              style={{ width: '100%', padding: '6px', background: '#db2777', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+            >
+              Saturate Queue
+            </button>
+          </div>
+
+          {/* Packet Corruption */}
+          <div style={{ background: '#090d14', border: '1px solid #1a2333', borderRadius: '6px', padding: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '12px', fontWeight: 700, color: '#a855f7' }}>6. Packet Corruption</span>
+              <span style={{ fontSize: '11px', color: '#a855f7', fontFamily: 'monospace' }}>{corruptionRate}%</span>
+            </div>
+            <p style={{ fontSize: '11px', color: '#64748b', margin: '4px 0 8px 0' }}>Simulate bit flip & CRC errors</p>
+            <input
+              type="range"
+              min="5"
+              max="50"
+              value={corruptionRate}
+              onChange={(e) => setCorruptionRate(Number(e.target.value))}
+              style={{ width: '100%', marginBottom: '8px', accentColor: '#a855f7' }}
+            />
+            <button
+              onClick={() => {
+                if (onInjectPacketCorruption) {
+                  onInjectPacketCorruption(selectedLink, corruptionRate / 100);
+                  notify(`Injected ${corruptionRate}% corruption on ${selectedLink}`);
+                }
+              }}
+              style={{ width: '100%', padding: '6px', background: '#9333ea', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+            >
+              Inject Bit Corruption
             </button>
           </div>
         </div>

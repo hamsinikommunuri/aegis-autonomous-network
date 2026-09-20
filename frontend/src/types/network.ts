@@ -169,6 +169,10 @@ export interface BenchmarkResultItem {
   recovery_time_ms: number;
   incidents_handled: number;
   rollbacks_count: number;
+  affected_flows?: number;
+  recovery_success_rate?: number;
+  rollback_rate?: number;
+  prediction_accuracy?: number;
 }
 
 export interface BenchmarkReport {

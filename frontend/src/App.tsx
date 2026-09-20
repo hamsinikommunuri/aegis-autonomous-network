@@ -165,6 +165,8 @@ export const App: React.FC = () => {
             onInjectLatencySpike={(id, ms) => engine.injectLatencySpike(id, ms)}
             onInjectBandwidthReduction={(id, bw) => engine.injectBandwidthReduction(id, bw)}
             onInjectTrafficSurge={(id, mult) => engine.injectTrafficSurge(id, mult)}
+            onInjectQueueSaturation={(id, qCap) => engine.injectQueueSaturation(id, qCap)}
+            onInjectPacketCorruption={(id, rate) => engine.injectPacketCorruption(id, rate)}
             onRunScenario={(scId) => engine.runScenario(scId)}
             onResetFailures={() => engine.clearAllFailures()}
           />

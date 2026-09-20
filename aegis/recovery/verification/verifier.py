@@ -45,10 +45,10 @@ class VerificationEngine:
             pre_loss = incident.pre_recovery_metrics.get("loss_rate", 0.0)
 
             # Check if condition on target link improved
-            if target_link.status == "DOWN" and incident.incident_type == "LINK_FAILURE":
-                # Link failure handled by rerouting around it
+            if target_link.status == "DOWN" or incident.incident_type in ("HARD_LINK_FAILURE", "LINK_FAILURE", "ROUTER_OFFLINE"):
+                # Physical cut or router crash handled by routing around it
                 pass
-            elif target_link.utilization > self.util_target and target_link.loss_rate > self.loss_target:
+            elif target_link.utilization > self.util_target or target_link.loss_rate > self.loss_target:
                 return (
                     False,
                     f"Mitigation failed: {res} remains congested (utilization: {round(target_link.utilization*100, 1)}%, loss: {round(target_link.loss_rate*100, 2)}%).",

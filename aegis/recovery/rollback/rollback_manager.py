@@ -47,7 +47,10 @@ class RollbackManager:
         }
         self.rollback_records.append(record)
 
-        # Mark candidate plan as FAILED in candidate list
+        # Mark candidate plan as FAILED in candidate list and record in incident
+        if incident.selected_plan_id and incident.selected_plan_id not in incident.failed_plan_ids:
+            incident.failed_plan_ids.append(incident.selected_plan_id)
+
         for cand in incident.candidate_plans:
             if cand.get("id") == incident.selected_plan_id:
                 cand["status"] = "FAILED"

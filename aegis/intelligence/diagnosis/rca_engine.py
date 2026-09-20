@@ -81,7 +81,7 @@ class RootCauseAnalyzer:
         effective_loss = max(link.loss_rate, getattr(topo_link, "loss_rate", 0.0))
         if (effective_loss >= 0.05 or link.status == "DEGRADED" or (topo_link and topo_link.status.value == "DEGRADED")) and link.utilization < 0.65:
             return {
-                "root_cause": "PHYSICAL_LAYER_OPTICAL_OR_BIT_ERROR_DEGRADATION",
+                "root_cause": "PHYSICAL_PACKET_LOSS_DEGRADATION",
                 "confidence": 0.92,
                 "evidence": [
                     f"Packet loss rate is elevated at {round(effective_loss * 100, 2)}%",
@@ -91,11 +91,48 @@ class RootCauseAnalyzer:
                 "explanation": f"High packet loss without queue congestion indicates optical dispersion, dirty fiber, or hardware CRC errors on link {resource}.",
             }
 
-        # Case C: Congestion / Traffic Surge
+        # Case C: Topology Partition or Routing Failure Check
+        if anomaly_type in ("TOPOLOGY_PARTITION", "ROUTING_FAILURE"):
+            return {
+                "root_cause": anomaly_type,
+                "confidence": 0.96,
+                "evidence": [f"Anomaly type flagged as {anomaly_type}", f"Affected resource {resource}"],
+                "explanation": f"Forwarding failure detected due to {anomaly_type} impacting path reachability.",
+            }
+
+        # Case D: Traffic Surge Detection
+        if "rate_of_change" in anomaly.get("evidence", {}):
+            roc_str = str(anomaly["evidence"]["rate_of_change"])
+            return {
+                "root_cause": "ABNORMAL_TRAFFIC_SURGE",
+                "confidence": 0.91,
+                "evidence": [
+                    f"Rate of change spike: {roc_str}",
+                    f"Link utilization reached {round(link.utilization * 100, 1)}%",
+                    f"Queue depth is {link.queue_depth} packets",
+                ],
+                "explanation": f"Sudden burst of application traffic / flash crowd saturated link {resource}.",
+            }
+
+        # Case E: Queue Overflow Detection
+        queue_ratio = link.queue_depth / 200.0
+        if queue_ratio >= 0.85 or (link.queue_depth > 180 and link.packets_dropped > 0):
+            return {
+                "root_cause": "QUEUE_OVERFLOW",
+                "confidence": 0.93,
+                "evidence": [
+                    f"Queue depth reached {link.queue_depth} packets (near buffer capacity)",
+                    f"Packets dropped in interval: {link.packets_dropped}",
+                    f"Link utilization: {round(link.utilization * 100, 1)}%",
+                ],
+                "explanation": f"Buffer capacity exhausted at link {resource} causing persistent tail drops.",
+            }
+
+        # Case F: Bandwidth Exhaustion / Congestion
         if link.utilization >= 0.85:
-            # Check if neighboring parallel links are also saturated or have spare capacity
+            # Check neighboring parallel links for cascading vs bottleneck
             src_node_links = self.topology.get_out_links(link.source)
-            alternate_links = [l for lid, l in src_node_links.items() if lid != resource and l.is_operational()]
+            alternate_links = [l for dest_nid, l in src_node_links.items() if l.id != resource and l.is_operational()]
             alternate_utilizations = [snapshot.links[l.id].utilization for l in alternate_links if l.id in snapshot.links]
             avg_alt_util = sum(alternate_utilizations) / len(alternate_utilizations) if alternate_utilizations else 0.0
 
@@ -105,16 +142,24 @@ class RootCauseAnalyzer:
                 f"Round-trip latency surged to {round(link.latency_ms, 1)}ms",
             ]
 
+            if link.utilization >= 0.98:
+                return {
+                    "root_cause": "BANDWIDTH_EXHAUSTION",
+                    "confidence": 0.96,
+                    "evidence": evidence + ["Physical transmission bandwidth completely saturated"],
+                    "explanation": f"Offered load exceeds maximum physical throughput capacity of link {resource}.",
+                }
+
             if avg_alt_util > 0.80:
                 return {
-                    "root_cause": "CASCADING_SYSTEMIC_NETWORK_CONGESTION",
+                    "root_cause": "CASCADING_CONGESTION",
                     "confidence": 0.89,
                     "evidence": evidence + [f"Parallel alternate egress links also highly utilized (avg {round(avg_alt_util * 100, 1)}%)"],
                     "explanation": f"System-wide traffic volume exceeds available edge capacity, leading to cascading congestion across {resource} and parallel trunks.",
                 }
             else:
                 return {
-                    "root_cause": "LINK_BOTTLENECK_CONGESTION_AND_SUBOPTIMAL_FLOW_DISTRIBUTION",
+                    "root_cause": "LINK_CONGESTION",
                     "confidence": 0.94,
                     "evidence": evidence + [f"Alternate paths have spare capacity (avg utilization: {round(avg_alt_util * 100, 1)}%)"],
                     "explanation": f"Traffic concentration on primary shortest-path link {resource} caused buffer bloat and queue exhaustion while alternate paths remain underutilized.",

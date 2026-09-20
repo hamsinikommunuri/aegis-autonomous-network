@@ -181,7 +181,13 @@ class RecoveryPlanner:
             risk_comp = (100 - cand["risk_score"]) * 0.20
             qos_bonus = 10.0 if cand.get("qos_priority_preserved") else 0.0
             
-            cand["score"] = round(loss_comp + lat_comp + risk_comp + qos_bonus, 2)
+            if cand.get("id") in getattr(incident, "failed_plan_ids", []):
+                cand["status"] = "FAILED"
+                cand["failure_reason"] = incident.rollback_reason or "Failed verification in prior attempt"
+                cand["score"] = -999.0
+            else:
+                cand["status"] = "READY"
+            cand["score"] = round(loss_comp + lat_comp + risk_comp + qos_bonus, 2) if cand.get("status") != "FAILED" else -999.0
 
         # Sort descending by score
         candidates.sort(key=lambda c: c["score"], reverse=True)

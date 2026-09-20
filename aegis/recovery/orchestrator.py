@@ -146,7 +146,7 @@ class AegisOrchestrator:
                     # Pick top untried candidate plan
                     chosen_plan = None
                     for cand in candidates:
-                        if cand.get("status") != "FAILED":
+                        if cand.get("id") not in incident.failed_plan_ids and cand.get("status") != "FAILED":
                             chosen_plan = cand
                             break
 
@@ -172,6 +172,13 @@ class AegisOrchestrator:
                         # Start verification countdown
                         incident.status = IncidentStatus.VERIFYING
                         self.pending_verifications[inc_id] = (self.verifier.settle_steps, action_record)
+                    else:
+                        incident.status = IncidentStatus.CLOSED
+                        incident.add_timeline_event(
+                            current_time,
+                            "ALL_PLANS_EXHAUSTED",
+                            "All candidate recovery plans were attempted and rolled back."
+                        )
 
         # 6. VERIFY / ROLLBACK: Handle pending verifications
         for inc_id, (steps_left, action_record) in list(self.pending_verifications.items()):

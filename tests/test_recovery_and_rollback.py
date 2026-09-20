@@ -58,11 +58,10 @@ def test_autonomous_recovery_and_verification_cycle():
     for _ in range(3):
         sim.step()
 
-    # Artificially degrade link
+    # Degrade link to trigger genuine congestion (40 Mbps demand on 20 Mbps bandwidth)
     link = topo.get_link_between("DR1", "CR1")
     assert link is not None
-    link.current_utilization = 0.94
-    link.current_queue_depth = 170
+    link.bandwidth_bps = 20_000_000.0
 
     # Step simulation through detection, diagnosis, planning, and execution
     for _ in range(8):

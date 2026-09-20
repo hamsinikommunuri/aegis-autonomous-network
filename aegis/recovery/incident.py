@@ -65,6 +65,7 @@ class Incident:
     verification_reason: Optional[str] = None
     rollback_performed: bool = False
     rollback_reason: Optional[str] = None
+    failed_plan_ids: List[str] = field(default_factory=list)
     resolved_time_ms: Optional[float] = None
 
     # Timeline event audit log
@@ -101,6 +102,7 @@ class Incident:
             "verification_reason": self.verification_reason,
             "rollback_performed": self.rollback_performed,
             "rollback_reason": self.rollback_reason,
+            "failed_plan_ids": list(self.failed_plan_ids),
             "resolved_time_ms": round(self.resolved_time_ms, 2) if self.resolved_time_ms is not None else None,
             "timeline": list(self.timeline),
         }
